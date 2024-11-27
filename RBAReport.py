@@ -50,7 +50,7 @@ def parseCommentsAndWorkNotes(sText: str) -> list[tuple[datetime, str, str, str]
     # Define the regex pattern to match the date, name, update type, and the update content
     rPattern = re.compile(
         r"(?P<datetime>\d{2}-\d{2}-\d{4} \d{2}:\d{2}:\d{2}) - "
-        r"(?P<name>[\w\s]+) \((?P<update_type>[\w\s]+)\)\n"
+        r"(?P<name>[\w\s']+) \((?P<update_type>[\w\s]+)\)\n"
         r"(?P<update>[\s\S]+?)(?=\n\d{2}-\d{2}-\d{4} \d{2}:\d{2}:\d{2} -|$)"
     )
 
@@ -69,7 +69,7 @@ def parseCommentsAndWorkNotes(sText: str) -> list[tuple[datetime, str, str, str]
         # Append to the list as a tuple
         updates.append((dt, name, update_type, update))
 
-    # reverse the order of the list
+    # Reverse the order of the list
     updates.reverse()
 
     return updates
@@ -405,13 +405,13 @@ def ServiceNOWReports():
 
         # ---------- Incident response and resolution------------
         sSQL = ("SELECT ReportingService, Number, State, Priority, ReportPriority, AssignedTo, ShortDescription, Opened, Resolved, CommentsAndWorkNotes, Notes, Caller "
-                "FROM Incident WHERE ReportingService <> 'Other' AND Exclude = ? AND State <> 'Cancelled' AND Updated > ? ORDER BY ReportPriority, Number, ReportingService")
+                "FROM Incident WHERE ReportingService <> 'Other' AND Exclude = ? AND State <> 'Cancelled' AND Updated > ? ORDER BY ReportingService, ReportPriority, Number")
 
         oReport = Report(f'Incident Response and Resolution')
         oReport.addColumn('#', sJust='right')
-        oReport.addColumn('Service', sJust='left')
+        oReport.addColumn('Service', sJust='left', bBreak=True)
         oReport.addColumn('Reference', sJust='left')
-        oReport.addColumn('P', sJust='centre', bBreak=True)
+        oReport.addColumn('P', sJust='centre')
         oReport.addColumn('Caller', sJust='left')
         oReport.addColumn('Assigned To', sJust='left')
         oReport.addColumn('State', sJust='left', bShow=False)
@@ -448,11 +448,13 @@ def ServiceNOWReports():
         lIncidentTargetResponseTimes = ['', '0:00:10', '0:00:30', '0:01:00', '0:04:00', '0:08:00']
         lIncidentTargetResolveTimes = ['', '0:01:00', '0:04:00', '0:10:00', '5:00:00', '20:00:00']
 
-        sPrevPriority = ' '
+        sPrevPriority = ' '   # must be one space not an empty string
+        sPrevService = ''
 
         for tResult in lResults:
             sService, sNumber, sState, sPriority, sReportPriority, sAssignedTo, sDescription, sOpened, sResolved, sCommentsAndWorkNotes, sNotes, sCaller = tResult
 
+            sDescription = sDescription.replace('\t', ' ')
             if not sNotes:
                 sNotes = ''
 
@@ -467,7 +469,7 @@ def ServiceNOWReports():
 
             iOrigPriority = None
 
-            iCtr = 1 if sReportPriority[0] != sPrevPriority[0] else iCtr + 1
+            iCtr = 1 if sReportPriority[0] != sPrevPriority[0] or sService != sPrevService else iCtr + 1
 
             sOverrideSQL = "SELECT StartTime, EndTime FROM SLAOverride WHERE Number = ? AND SLA = 'Response'"
             sResponseSQL = "SELECT StartTime, StopTime FROM IncidentSLA WHERE Number = ? AND SLADefinition = ?"
@@ -654,6 +656,7 @@ def ServiceNOWReports():
             oReportXL.addRow()
 
             sPrevPriority = sReportPriority
+            sPrevService = sService
 
             iIndex = int(sReportPriority[0]) - 1
             if stripColours(sRespondDuration).strip() != 'N/A':
@@ -665,6 +668,7 @@ def ServiceNOWReports():
         print('')
         if oArgs.summary:
             oReportXL.printReport()
+            print('')
             oReportXL.sendToClipboard()
 
         print(f"Respond counts {lRespondedCount}")
@@ -676,13 +680,13 @@ def ServiceNOWReports():
 
         # ---------- Request response and resolution------------
         sSQL = ("SELECT Service, Number, RequestItem, Priority, ReportPriority, AssignedTo, ShortDescription, Opened, Closed, CommentsAndWorkNotes, Notes, RequestedBy "
-                "FROM Request WHERE Service <> 'Other' AND Exclude = ? AND Updated > ? ORDER BY ReportPriority, Number, Service")
+                "FROM Request WHERE Service <> 'Other' AND Exclude = ? AND Updated > ? ORDER BY Service, ReportPriority, Number")
 
         oReport = Report(f'Request Response and Resolution')
         oReport.addColumn('#', sJust='right')
-        oReport.addColumn('Service', sJust='left')
+        oReport.addColumn('Service', sJust='left', bBreak=True)
         oReport.addColumn('Reference', sJust='left')
-        oReport.addColumn('P', sJust='centre', bBreak=True)
+        oReport.addColumn('P', sJust='centre')
         oReport.addColumn('Requested By', sJust='left')
         oReport.addColumn('Assigned To', sJust='left')
         oReport.addColumn('Description', sJust='left')
@@ -717,7 +721,8 @@ def ServiceNOWReports():
         lRequestTargetResponseTimes = ['', '0:00:10', '0:00:30', '0:01:00', '0:04:00', '0:08:00']
         lRequestTargetResolveTimes = ['', '0:02:00', '1:00:00', '5:00:00', '10:00:00', '260:00:00']
 
-        sPrevPriority = ' '
+        sPrevPriority = ' '      # needs to be a single space not an empty string
+        sPrevService = ''
 
         for tResult in lResults:
             sService, sNumber, sReqItem, sPriority, sReportPriority, sAssignedTo, sDescription, sOpened, sResolved, sCommentsAndWorkNotes, sNotes, sCaller = tResult
@@ -734,7 +739,7 @@ def ServiceNOWReports():
 
             iOrigPriority = None
 
-            iCtr = 1 if sReportPriority[0] != sPrevPriority[0] else iCtr + 1
+            iCtr = 1 if sReportPriority[0] != sPrevPriority[0] or sPrevService != sService else iCtr + 1
 
             sOverrideSQL = "SELECT StartTime, EndTime FROM SLAOverride WHERE Number = ? AND SLA = 'Response'"
 
@@ -882,6 +887,7 @@ def ServiceNOWReports():
             oReportXL.addRow()
 
             sPrevPriority = sReportPriority
+            sPrevService = sService
 
             iIndex = int(sReportPriority[0]) - 1
             if stripColours(sRespondDuration).strip() != 'N/A':
@@ -938,60 +944,55 @@ def ServiceNOWReports():
 
     if oArgs.report == 4:
         # ---------- Changes delivered ------------
-        sSQL = ("SELECT Service, Number, ShortDescription, Category, PlannedStartDate, CloseCode, Closed, AssignedTo FROM Change WHERE "
-                "Service <> 'Other' AND Exclude = 0 AND State = 'Closed' ORDER BY Service, Number")
+        sSQL = ("SELECT Service, Number, ShortDescription, Category, CloseCode, AssignedTo, Type, Environment, Planned, Categorisation, Production FROM Change WHERE "
+                "Closed >= ? AND Closed <= ? AND Service <> 'Other' AND Exclude = 0 AND State = 'Closed' ORDER BY Service, Number")
 
-        oReport = Report(f'Changes delivered in the month.')
+        oReport = Report(f'Changes successfully delivered in the month.')
         oReport.addColumn('#', sJust='right')
         oReport.addColumn('Service', sJust='left', bBreak=True)
         oReport.addColumn('Reference', sJust='left')
         oReport.addColumn('Description', sJust='left')
         oReport.addColumn('Assigned To', sJust='left')
         oReport.addColumn('Type', sJust='left')
+        oReport.addColumn('Category', sJust='left')
+        oReport.addColumn('Environment', sJust='left')
         oReport.addColumn('Close Code', sJust='left')
-        oReport.addColumn('Scheduled Date', sJust='left')
-        oReport.addColumn('Date Completed', sJust='left')
 
         oReportXL = Report(f'Excel report for changes delivered in the month.')
         oReportXL.addColumn('Service', sJust='left', bBreak=True)
         oReportXL.addColumn('Reference', sJust='left')
         oReportXL.addColumn('Description', sJust='left')
         oReportXL.addColumn('Logical/Physical', sJust='left')
-        oReportXL.addColumn('Scheduled Date', sJust='left')
-        oReportXL.addColumn('Date Completed', sJust='left')
-        oReportXL.addColumn('Completion Status', sJust='left')
+        oReportXL.addColumn('Type', sJust='left')
+        oReportXL.addColumn('Environment', sJust='left')
+        oReportXL.addColumn('Close Code', sJust='left')
 
-        lResults = oDatabase.fetchList(sSQL, ())
+        lResults = oDatabase.fetchList(sSQL, (dtStartOfMonth, dtEndOfMonth))
         iCtr = 0
         for tResult in lResults:
-            sService, sNumber, sDescription, sCategory, sPlannedStart, sClosedCode, sClosed, sAssignedTo = tResult
+            sService, sNumber, sDescription, sCategory, sClosedCode, sAssignedTo, sType, sEnvironment, bPlanned, sCategorisation, bProduction = tResult
 
-            dtPlanned = datetime.strptime(sPlannedStart, sDateTimeFormat)
-            dtClosed = datetime.strptime(sClosed, sDateTimeFormat)
+            sDescription = sDescription.replace(' ', '')
+            iCtr += 1
 
-            if dtStartOfMonth <= dtClosed <= dtEndOfMonth:
-                iCtr += 1
+            if sCategory in ['Software', 'Service']:
+                sCategory = 'Logical'
+            elif sCategory == 'Hardware':
+                sCategory = 'Physical'
+            else:
+                sCategory = f"[orange3]{sCategory}"
 
-                if sCategory in ['Software', 'Service']:
-                    sCategory = 'Logical'
-                elif sCategory == 'Hardware':
-                    sCategory = 'Physical'
-                else:
-                    sCategory = f"[orange3]{sCategory}"
+            oReport.addCells(iCtr, mapService(sService), sNumber, sDescription, mapPerson(sAssignedTo), sType, sCategory, sEnvironment, sClosedCode)
+            oReport.addRow()
 
-                oReport.addCells(iCtr, mapService(sService), sNumber, sDescription, mapPerson(sAssignedTo), sCategory, sClosedCode, dtPlanned.strftime('%-d/%m/%Y %H:%M'),
-                                 dtClosed.strftime('%-d/%m/%Y %H:%M'))
-                oReport.addRow()
-
-                oReportXL.addCells(sService, sNumber, sDescription, sCategory, dtPlanned, dtClosed, 'ü')
-                oReportXL.addRow()
+            oReportXL.addCells(sService, sNumber, sDescription, sCategory, sType, sEnvironment, sClosedCode)
+            oReportXL.addRow()
 
         oReport.printReport()
         print('')
         if oArgs.summary:
             oReportXL.printReport()
             oReportXL.sendToClipboard()
-            print("")
 
     if oArgs.report == 7:
         # ---------- History of ticket based on comments and work notes ------------
@@ -1023,6 +1024,7 @@ def ServiceNOWReports():
         dtOpened = datetime.strptime(sOpened, sDateTimeFormat)
 
         lComments = parseCommentsAndWorkNotes(sCommentsAndWorkNotes)
+        print(lComments)
 
         oReport.addCells(dtOpened.strftime('%a %-d/%m %H:%M'), 'Opened', sCaller, sDescription)
         oReport.addRow(True)
